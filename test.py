@@ -129,7 +129,7 @@ def users_menu():
     frame_main.grid_columnconfigure(2, weight=1)
 
     main_create_button(text="Add User", command=users_add_user, row=1, column=1)
-    main_create_button(text="Edit User", command=lambda: test("Edit User"), row=2, column=1)
+    main_create_button(text="Edit User", command=users_edit_user, row=2, column=1)
     main_create_button(text="Delete User", command=users_delete_user, row=3, column=1)
 
 def users_add_user():
@@ -191,7 +191,6 @@ def check_and_create_user(create_user_callback):
     else:
         # Se já tem permissão sudo, chama a função de criação de usuário diretamente
         create_user_callback()
-
 
 def users_delete_user():
     def get_system_users():
@@ -273,6 +272,127 @@ def users_delete_user():
 
     main_create_button(text="Delete User", command=delete_user, row=3, column=1)
     main_create_button(text="Back", command=users_menu, row=4, column=1)
+
+def users_edit_user():
+    def get_system_users():
+        try:
+            result = subprocess.run(
+                ["getent", "passwd"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                messagebox.showerror("Error", "Failed to retrieve system users.")
+                return []
+
+            users = [
+                line.split(":")[0]
+                for line in result.stdout.splitlines()
+                if int(line.split(":")[2]) >= 1000 and line.split(":")[0] != "nobody"
+            ]
+            return users
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while fetching users: {e}")
+            return []
+
+    def update_user_list():
+        users = get_system_users()
+        if users:
+            combobox_users['values'] = users
+            combobox_users.set('')
+
+    def edit_user():
+        username = combobox_users.get()
+        new_username = entry_new_username.get().strip()
+        
+        if not username:
+            messagebox.showerror("Error", "You must select a user to edit!")
+            return
+        if not new_username:
+            messagebox.showerror("Error", "New username cannot be empty!")
+            return
+        
+        try:
+            # Verificar se o usuário existe
+            result_check = subprocess.run(
+                ["id", username],
+                capture_output=True,
+                text=True
+            )
+
+            if result_check.returncode != 0:
+                messagebox.showerror("Error", f"User '{username}' does not exist!")
+                return
+
+            # Renomear o usuário
+            result_rename_user = subprocess.run(
+                ["sudo", "usermod", "-l", new_username, username],
+                capture_output=True,
+                text=True
+            )
+
+            # Renomear o grupo do usuário
+            result_rename_group = subprocess.run(
+                ["sudo", "groupmod", "-n", new_username, username],
+                capture_output=True,
+                text=True
+            )
+
+            # Alterar o grupo primário do usuário
+            result_change_group = subprocess.run(
+                ["sudo", "usermod", "-g", new_username, new_username],
+                capture_output=True,
+                text=True
+            )
+
+            if result_rename_user.returncode == 0 and result_rename_group.returncode == 0 and result_change_group.returncode == 0:
+                messagebox.showinfo("Success", f"User '{username}' renamed to '{new_username}' successfully!")
+                update_user_list()  # Atualiza a lista de usuários após a alteração
+                
+                # Limpar o campo de novo nome de usuário após o sucesso
+                entry_new_username.delete(0, tk.END)
+
+            else:
+                messagebox.showerror("Error", f"Failed to rename user or group:\n"
+                                            f"{result_rename_user.stderr}\n"
+                                            f"{result_rename_group.stderr}\n"
+                                            f"{result_change_group.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
+
+
+
+    main_clear()
+    main_title("Edit User")
+
+    users = get_system_users()
+    if not users:
+        return
+
+    label_select = tk.Label(frame_main,
+                            text="Select or Type a user to edit:",
+                            font=("Segoe UI", 12),
+                            fg=config.color_label_text,
+                            bg=config.color_label_bg)
+    label_select.grid(row=1, column=1, padx=10, pady=10)
+
+    combobox_users = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=20, values=users)
+    combobox_users.grid(row=2, column=1, padx=10, pady=10)
+    combobox_users.set('')
+
+    label_new_username = tk.Label(frame_main,
+                                  text="Enter new user:",
+                                  font=("Segoe UI", 12),
+                                  fg=config.color_label_text,
+                                  bg=config.color_label_bg)
+    label_new_username.grid(row=3, column=1, padx=10, pady=10)
+
+    entry_new_username = tk.Entry(frame_main, font=("Segoe UI", 12), width=20)
+    entry_new_username.grid(row=4, column=1, padx=10, pady=10)
+
+    main_create_button(text="Rename User", command=edit_user, row=5, column=1)
+    main_create_button(text="Back", command=users_menu, row=6, column=1)
 
 def test(btn):
     print(f"{btn}")
