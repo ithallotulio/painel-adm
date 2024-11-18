@@ -1,8 +1,69 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, simpledialog
 import subprocess
 import config
 import random
+
+def check_sudo_permission():
+    """Verifica se o usuário tem permissão para usar sudo sem pedir a senha."""
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", "true"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            print("Sudo permission granted!")
+            return True
+        else:
+            print("No sudo permission or password required.")
+            return False
+    except FileNotFoundError:
+        messagebox.showerror("Error", "sudo command not found. Are you on a Linux/Unix system?")
+        return False
+    except Exception as e:
+        messagebox.showerror("Error", f"An unexpected error occurred while checking sudo permission: {e}")
+        return False
+
+def request_sudo_password(callback):
+    """Solicita a senha do sudo via interface gráfica tkinter e chama a função de callback após autenticação bem-sucedida."""
+    def authenticate_sudo_password():
+        """Autentica a senha fornecida para o sudo e chama a função de callback após sucesso."""
+        password = password_entry.get()
+        if not password:
+            messagebox.showerror("Error", "Password cannot be empty!")
+            return
+
+        try:
+            result = subprocess.run(
+                ["sudo", "-S", "echo", "Sudo authentication successful"],
+                input=password + "\n",
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", "Sudo authentication successful!")
+                auth_window.destroy()
+                callback()  # Chama a função original após autenticação bem-sucedida
+            else:
+                messagebox.showerror("Error", "Incorrect sudo password!")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+
+    auth_window = tk.Toplevel(root)
+    auth_window.title("Sudo Authentication")
+
+    label = tk.Label(auth_window, text="Enter your sudo password:")
+    label.pack(padx=20, pady=10)
+
+    password_entry = tk.Entry(auth_window, show="*", font=("Segoe UI", 12))
+    password_entry.pack(padx=20, pady=10)
+
+    auth_button = tk.Button(auth_window, text="Authenticate", command=authenticate_sudo_password)
+    auth_button.pack(pady=10)
+
+    auth_window.mainloop()
 
 def nav_create_button(text, command, row, column):
     button = tk.Button(frame_nav,
@@ -72,9 +133,10 @@ def users_menu():
     main_create_button(text="Delete User", command=users_delete_user, row=3, column=1)
 
 def users_add_user():
-    names = ["Ithallo", "Cesar", "Nelson", "Pele", "Zeca Pagodinho", "Tim Maia", "Raul Seixas", "Cazuza", "Chacrinha", "Chico Buarque"]
+    names = ["Ithallo", "Cesar", "Nelson", "Pele", "ZecaPagodinho", "TimMaia", "RaulSeixas", "Cazuza", "Chacrinha", "ChicoBuarque"]
 
     def create_user():
+        """Função para criar um usuário, que será chamada após a autenticação sudo."""
         username = entry_username.get().strip()
         if not username:
             messagebox.showerror("Error", "Username cannot be empty!")
@@ -96,7 +158,7 @@ def users_add_user():
             messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
 
     def generate_random_username():
-        # Gerar um nome real aleatório em português (somente primeiro nome)
+        """Função para gerar um nome de usuário aleatório."""
         random_username = random.choice(names).lower()
         entry_username.delete(0, tk.END)
         entry_username.insert(0, random_username)
@@ -115,8 +177,21 @@ def users_add_user():
     entry_username.grid(row=2, column=1, padx=10, pady=10)
 
     main_create_button(text="Random Username", command=generate_random_username, row=3, column=1)
-    main_create_button(text="Create User", command=create_user, row=4, column=1)
+    
+    # Quando o botão "Create User" for clicado, verifica permissão sudo e solicita a senha se necessário
+    main_create_button(text="Create User", command=lambda: check_and_create_user(create_user), row=4, column=1)
+    
     main_create_button(text="Back", command=users_menu, row=5, column=1)
+
+def check_and_create_user(create_user_callback):
+    """Verifica se o usuário tem permissão sudo e chama a função de criação de usuário após a autenticação"""
+    if not check_sudo_permission():
+        # Se o usuário não tem permissão sudo, solicita a senha
+        request_sudo_password(create_user_callback)
+    else:
+        # Se já tem permissão sudo, chama a função de criação de usuário diretamente
+        create_user_callback()
+
 
 def users_delete_user():
     def get_system_users():
