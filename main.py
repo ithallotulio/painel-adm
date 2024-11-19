@@ -1,3 +1,4 @@
+import psutil
 import tkinter as tk
 from tkinter import messagebox, ttk, simpledialog
 import subprocess
@@ -124,13 +125,10 @@ def users_menu():
 
     main_title("Manage Users")
 
-    frame_main.grid_columnconfigure(0, weight=1)
-    frame_main.grid_columnconfigure(1, weight=1)
-    frame_main.grid_columnconfigure(2, weight=1)
-
     main_create_button(text="Add User", command=users_add_user, row=1, column=1)
     main_create_button(text="Edit User", command=users_edit_user, row=2, column=1)
     main_create_button(text="Delete User", command=users_delete_user, row=3, column=1)
+    main_create_button(text="Close", command=main_clear, row=4, column=1)
 
 def users_add_user():
     names = ["Ithallo", "Cesar", "Nelson", "Pele", "ZecaPagodinho", "TimMaia", "RaulSeixas", "Cazuza", "Chacrinha", "ChicoBuarque"]
@@ -394,6 +392,199 @@ def users_edit_user():
     main_create_button(text="Rename User", command=edit_user, row=5, column=1)
     main_create_button(text="Back", command=users_menu, row=6, column=1)
 
+def system():
+    """Monitora o uso de CPU, memória e disco e exibe na interface."""
+    
+    def update_system_info():
+        """Atualiza as informações de uso de CPU, memória e disco a cada 1 segundo."""
+        if not label_cpu_usage.winfo_exists():  # Verifica se o rótulo ainda existe
+            return
+
+        cpu_usage = psutil.cpu_percent(interval=1)  # Uso de CPU em porcentagem
+        memory_info = psutil.virtual_memory()  # Informações de memória
+        memory_usage = memory_info.percent  # Percentual de memória usada
+        disk_info = psutil.disk_usage('/')  # Uso de disco na raiz
+        disk_usage = disk_info.percent  # Percentual de uso do disco
+
+        # Atualiza os rótulos com as novas informações
+        label_cpu_usage.config(text=f"CPU Usage: {cpu_usage}%")
+        label_memory_usage.config(text=f"Memory Usage: {memory_usage}%")
+        label_disk_usage.config(text=f"Disk Usage: {disk_usage}%")
+
+        # Atualiza as informações a cada 1000 ms (1 segundo)
+        root.after(1000, update_system_info)
+
+
+    # Limpa a interface principal
+    main_clear()
+    main_title("System Monitoring")
+
+    # Rótulos para exibir as informações
+    label_cpu_usage = tk.Label(frame_main,
+                               text="CPU Usage: 0%",
+                               font=("Segoe UI", 12),
+                               fg=config.color_label_text,
+                               bg=config.color_label_bg)
+    label_cpu_usage.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+
+    label_memory_usage = tk.Label(frame_main,
+                                  text="Memory Usage: 0%",
+                                  font=("Segoe UI", 12),
+                                  fg=config.color_label_text,
+                                  bg=config.color_label_bg)
+    label_memory_usage.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
+
+    label_disk_usage = tk.Label(frame_main,
+                                text="Disk Usage: 0%",
+                                font=("Segoe UI", 12),
+                                fg=config.color_label_text,
+                                bg=config.color_label_bg)
+    label_disk_usage.grid(row=3, column=1, padx=10, pady=10, sticky="ew")
+
+    # Botão para voltar ao menu anterior
+    main_create_button(text="Close", command=main_clear, row=4, column=1)
+
+    # Começa a atualização das informações de sistema
+    update_system_info()
+
+def services():
+    """Monitora e gerencia os serviços do sistema."""
+
+    def get_system_services():
+        """Obtém a lista de serviços disponíveis utilizando systemctl."""
+        try:
+            result = subprocess.run(
+                ["systemctl", "list-units", "--type=service", "--state=running"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                messagebox.showerror("Error", "Failed to retrieve services.")
+                return []
+
+            # Filtra os nomes dos serviços, removendo qualquer linha de cabeçalho ou vazia,
+            # e seleciona apenas os serviços que terminam com '.service'
+            services = [
+                line.split()[0] for line in result.stdout.splitlines()[1:]
+                if line.strip() and line.split()[0].endswith('.service')  # Filtra serviços .service
+            ]
+
+            # Remove a extensão '.service' de cada nome de serviço
+            services = [service.replace('.service', '') for service in services]
+
+            # Verifica se a lista de serviços está vazia
+            if not services:
+                messagebox.showwarning("No Services", "No running services found.")
+            return services
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while fetching services: {e}")
+            return []
+
+    def update_service_list():
+        """Atualiza a lista de serviços disponíveis."""
+        services = get_system_services()
+        if services:
+            combobox_services['values'] = services
+            combobox_services.set('')  # Limpa o combobox após atualização
+
+    def start_service():
+        """Inicia o serviço selecionado."""
+        service = combobox_services.get()
+        if not service:
+            messagebox.showerror("Error", "You must select a service to start!")
+            return
+
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "start", service],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", f"Service '{service}' started successfully!")
+                update_service_list()  # Atualiza a lista de serviços após a execução
+            else:
+                messagebox.showerror("Error", f"Failed to start service '{service}':\n{result.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+
+    def stop_service():
+        """Para o serviço selecionado."""
+        service = combobox_services.get()
+        if not service:
+            messagebox.showerror("Error", "You must select a service to stop!")
+            return
+
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "stop", service],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", f"Service '{service}' stopped successfully!")
+                update_service_list()
+            else:
+                messagebox.showerror("Error", f"Failed to stop service '{service}':\n{result.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def restart_service():
+        """Reinicia o serviço selecionado."""
+        service = combobox_services.get()
+        if not service:
+            messagebox.showerror("Error", "You must select a service to restart!")
+            return
+
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "restart", service],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", f"Service '{service}' restarted successfully!")
+                update_service_list()
+            else:
+                messagebox.showerror("Error", f"Failed to restart service '{service}':\n{result.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    # Limpa a interface principal
+    main_clear()
+    main_title("System Services")
+
+    # Obtém a lista de serviços disponíveis
+    services = get_system_services()
+    if not services:
+        return
+
+    # Rótulo para selecionar o serviço
+    label_select_service = tk.Label(frame_main,
+                                    text="Select a service to manage:",
+                                    font=("Segoe UI", 12),
+                                    fg=config.color_label_text,
+                                    bg=config.color_label_bg)
+    label_select_service.grid(row=1, column=1, padx=10, pady=10)
+
+    # Combobox para selecionar o serviço
+    combobox_services = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=20, values=services)
+    combobox_services.grid(row=2, column=1, padx=10, pady=10)
+    combobox_services.set('')
+
+    # Botões para gerenciar os serviços
+    main_create_button(text="Start Service", command=start_service, row=3, column=1)
+    main_create_button(text="Stop Service", command=stop_service, row=4, column=1)
+    main_create_button(text="Restart Service", command=restart_service, row=5, column=1)
+
+    # Botão para voltar ao menu anterior
+    main_create_button(text="Back", command=main_clear, row=6, column=1)
+
 def test(btn):
     print(f"{btn}")
 
@@ -410,10 +601,14 @@ frame_main = tk.Frame(root, height=500, bg=config.color_main)
 frame_main.grid(row=1, column=0, sticky="ew")
 frame_main.grid_propagate(False)
 
+frame_main.grid_columnconfigure(0, weight=1)
+frame_main.grid_columnconfigure(1, weight=1)
+frame_main.grid_columnconfigure(2, weight=1)
+
 """ NAV """
 nav_create_button(text="Users", command=users_menu, row=0, column=0)
-nav_create_button(text="System", command=lambda: test("System"), row=0, column=1)
-nav_create_button(text="Services", command=lambda: test("Services"), row=0, column=2)
+nav_create_button(text="System", command=system, row=0, column=1)
+nav_create_button(text="Services", command=services, row=0, column=2)
 nav_create_button(text="Files", command=lambda: test("Files"), row=0, column=3)
 nav_create_button(text="Automations", command=lambda: test("Automations"), row=0, column=4)
 
