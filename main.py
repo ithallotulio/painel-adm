@@ -4,6 +4,10 @@ from tkinter import messagebox, ttk, simpledialog
 import subprocess
 import config
 import random
+import shutil
+import os
+
+current_path = os.getcwd()
 
 def check_sudo_permission():
     """Verifica se o usuário tem permissão para usar sudo sem pedir a senha."""
@@ -110,6 +114,8 @@ def main_create_button(text, command, row, column):
 def main_clear():
     for widget in frame_main.winfo_children():
         widget.destroy()
+    
+    main_title("Welcome to Linux Controller!")
 
 def main_title(text):
     label = tk.Label(frame_main,
@@ -394,24 +400,29 @@ def users_edit_user():
 
 def system():
     """Monitora o uso de CPU, memória e disco e exibe na interface."""
-    
+
+    def get_system_info():
+        """Retorna informações do sistema como CPU, memória e disco."""
+        return {
+            "CPU Usage": f"{psutil.cpu_percent()}%",
+            "Memory Usage": f"{psutil.virtual_memory().percent}%",
+            "Disk Usage": f"{psutil.disk_usage('/').percent}%"
+        }
+
     def update_system_info():
-        """Atualiza as informações de uso de CPU, memória e disco a cada 1 segundo."""
-        if not label_cpu_usage.winfo_exists():  # Verifica se o rótulo ainda existe
-            return
+        """Atualiza os rótulos com informações do sistema."""
+        if not frame_main.winfo_exists():  # Verifica se o frame ainda existe
+            return  # Encerra a função se o frame foi destruído
 
-        cpu_usage = psutil.cpu_percent(interval=1)  # Uso de CPU em porcentagem
-        memory_info = psutil.virtual_memory()  # Informações de memória
-        memory_usage = memory_info.percent  # Percentual de memória usada
-        disk_info = psutil.disk_usage('/')  # Uso de disco na raiz
-        disk_usage = disk_info.percent  # Percentual de uso do disco
+        # Coleta informações do sistema
+        system_info = get_system_info()
 
-        # Atualiza os rótulos com as novas informações
-        label_cpu_usage.config(text=f"CPU Usage: {cpu_usage}%")
-        label_memory_usage.config(text=f"Memory Usage: {memory_usage}%")
-        label_disk_usage.config(text=f"Disk Usage: {disk_usage}%")
+        # Atualiza os rótulos
+        for key, label in labels.items():
+            if label.winfo_exists():  # Verifica se o rótulo ainda existe
+                label.config(text=f"{key}: {system_info[key]}")
 
-        # Atualiza as informações a cada 1000 ms (1 segundo)
+        # Agenda a próxima atualização
         root.after(1000, update_system_info)
 
 
@@ -419,32 +430,25 @@ def system():
     main_clear()
     main_title("System Monitoring")
 
-    # Rótulos para exibir as informações
-    label_cpu_usage = tk.Label(frame_main,
-                               text="CPU Usage: 0%",
-                               font=("Segoe UI", 12),
-                               fg=config.color_label_text,
-                               bg=config.color_label_bg)
-    label_cpu_usage.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+    # Cria rótulos dinamicamente
+    labels = {}
+    row = 1
+    for key in ["CPU Usage", "Memory Usage", "Disk Usage"]:
+        label = tk.Label(
+            frame_main,
+            text=f"{key}: 0%",
+            font=("Segoe UI", 12),
+            fg=config.color_label_text,
+            bg=config.color_label_bg
+        )
+        label.grid(row=row, column=1, padx=10, pady=10, sticky="ew")
+        labels[key] = label
+        row += 1
 
-    label_memory_usage = tk.Label(frame_main,
-                                  text="Memory Usage: 0%",
-                                  font=("Segoe UI", 12),
-                                  fg=config.color_label_text,
-                                  bg=config.color_label_bg)
-    label_memory_usage.grid(row=2, column=1, padx=10, pady=10, sticky="ew")
+    # Botão para fechar
+    main_create_button(text="Close", command=main_clear, row=row, column=1)
 
-    label_disk_usage = tk.Label(frame_main,
-                                text="Disk Usage: 0%",
-                                font=("Segoe UI", 12),
-                                fg=config.color_label_text,
-                                bg=config.color_label_bg)
-    label_disk_usage.grid(row=3, column=1, padx=10, pady=10, sticky="ew")
-
-    # Botão para voltar ao menu anterior
-    main_create_button(text="Close", command=main_clear, row=4, column=1)
-
-    # Começa a atualização das informações de sistema
+    # Inicia a atualização
     update_system_info()
 
 def services():
@@ -509,7 +513,6 @@ def services():
                 messagebox.showerror("Error", f"Failed to start service '{service}':\n{result.stderr}")
         except Exception as e:
             messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-
 
     def stop_service():
         """Para o serviço selecionado."""
@@ -583,7 +586,256 @@ def services():
     main_create_button(text="Restart Service", command=restart_service, row=5, column=1)
 
     # Botão para voltar ao menu anterior
-    main_create_button(text="Back", command=main_clear, row=6, column=1)
+    main_create_button(text="Close", command=main_clear, row=6, column=1)
+
+def create_label(text, row, column):
+    label = tk.Label(
+        frame_main,
+        text=text,
+        font=("Segoe UI", 12),
+        fg=config.color_label_text,
+        bg=config.color_label_bg,
+    )
+    label.grid(row=row, column=column, padx=10, pady=10)
+    return label
+
+def update_combobox_items(path, combobox):
+    try:
+        items = os.listdir(path)
+        combobox["values"] = items
+    except Exception as e:
+        combobox["values"] = []
+        messagebox.showerror("Error", f"Failed to list items: {e}")
+
+def create_combobox(path):
+    combobox = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox.grid(row=3, column=1, padx=10, pady=10)
+    combobox.set(path)
+    update_combobox_items(path, combobox)
+    return combobox
+
+def files_menu():
+    global current_path
+    main_clear()
+
+    main_title("File Management")
+
+    # Label para instrução
+    tk.Label(frame_main, text="Current Path:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
+
+    # Combobox única
+    combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox_items.grid(row=2, column=1, padx=10, pady=10)
+    combobox_items.set(current_path)
+
+    def update_combobox_items(path):
+        try:
+            combobox_items["values"] = os.listdir(path)
+        except Exception as e:
+            combobox_items["values"] = []
+            messagebox.showerror("Error", f"Failed to list items: {e}")
+
+    update_combobox_items(current_path)
+
+    # Botões
+    main_create_button(text="Edit Path", command=lambda: files_edit_path(current_path), row=3, column=1)
+    main_create_button(text="Create File", command=lambda: files_create(current_path), row=4, column=1)
+    main_create_button(text="Delete File", command=lambda: files_delete(current_path), row=5, column=1)
+    main_create_button(text="Move File", command=lambda: files_move(current_path), row=6, column=1)
+    main_create_button(text="Close", command=main_clear, row=7, column=1)
+
+def files_edit_path(previous_path):
+    global current_path
+    main_clear()
+
+    main_title("File Management")
+
+    # Label para o caminho
+    tk.Label(frame_main, text="Current Path:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
+
+    # Caixa de entrada para edição do caminho
+    entry_path = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_path.insert(0, previous_path)
+    entry_path.grid(row=2, column=1, padx=10, pady=10)
+
+    # Título para a Combobox
+    tk.Label(frame_main, text="Click to visualize files:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=3, column=1, padx=10, pady=10)
+
+    # Combobox para listar itens no caminho
+    combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox_items.grid(row=4, column=1, padx=10, pady=10)
+    combobox_items.set("Visualize files")
+
+    def update_combobox_items(path):
+        try:
+            combobox_items["values"] = os.listdir(path)
+            combobox_items.set("Visualize files")
+        except Exception as e:
+            combobox_items["values"] = []
+            messagebox.showerror("Error", f"Failed to list items: {e}")
+
+    update_combobox_items(previous_path)
+
+    def confirm_path(path):
+        global current_path
+        try:
+            if not os.path.isdir(path):
+                raise ValueError("The specified path is not a directory.")
+            current_path = path
+            messagebox.showinfo("Success", f"Path updated to: {current_path}")
+            update_combobox_items(current_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update path: {e}")
+
+    main_create_button(text="Confirm Path", command=lambda: confirm_path(entry_path.get()), row=5, column=1)
+    main_create_button(text="Back", command=files_menu, row=6, column=1)
+
+def files_create(previous_path):
+    main_clear()
+
+    main_title("File Management")
+
+    # Label para o caminho
+    tk.Label(frame_main, text="Current Path:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
+
+    # Combobox única
+    combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox_items.grid(row=2, column=1, padx=10, pady=10)
+    combobox_items.set(previous_path)
+
+    def update_combobox_items(path):
+        try:
+            combobox_items["values"] = os.listdir(path)
+        except Exception as e:
+            combobox_items["values"] = []
+            messagebox.showerror("Error", f"Failed to list items: {e}")
+
+    update_combobox_items(previous_path)
+
+    tk.Label(frame_main, text="Enter file name:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=4, column=1, padx=10, pady=10)
+
+    # Radiobuttons
+    creation_type = tk.StringVar(value="File")
+    frame_radiobuttons = tk.Frame(frame_main, bg=config.color_label_bg)
+    frame_radiobuttons.grid(row=5, column=1, padx=10, pady=10)
+
+    tk.Radiobutton(frame_radiobuttons, text="File", variable=creation_type, value="File", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg, width=17, height=2).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(frame_radiobuttons, text="Directory", variable=creation_type, value="Directory", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg, width=17, height=2).pack(side=tk.LEFT, padx=5)
+
+    entry_name = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_name.grid(row=6, column=1, padx=10, pady=10)
+
+    def create_item():
+        item_name = entry_name.get()
+        if not item_name:
+            messagebox.showerror("Error", "Please enter a name.")
+            return
+
+        full_path = os.path.join(previous_path, item_name)
+        try:
+            if creation_type.get() == "File":
+                open(full_path, "w").close()
+                messagebox.showinfo("Success", f"File '{item_name}' created successfully!")
+            else:
+                os.makedirs(full_path, exist_ok=True)
+                messagebox.showinfo("Success", f"Directory '{item_name}' created successfully!")
+            update_combobox_items(previous_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create item: {e}")
+
+    main_create_button(text="Create", command=create_item, row=7, column=1)
+    main_create_button(text="Back", command=files_menu, row=8, column=1)
+
+def files_delete(previous_path):
+    main_clear()
+
+    main_title("File Management")
+
+    tk.Label(frame_main, text="Select file or directory to delete", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
+
+    combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox_items.grid(row=3, column=1, padx=10, pady=10)
+    combobox_items.set(previous_path)
+
+    def update_combobox_items(path):
+        try:
+            combobox_items["values"] = os.listdir(path)
+        except Exception as e:
+            combobox_items["values"] = []
+            messagebox.showerror("Error", f"Failed to list items: {e}")
+
+    update_combobox_items(previous_path)
+
+    def delete_item():
+        item_name = combobox_items.get()
+        if not item_name:
+            messagebox.showerror("Error", "Please select a valid item.")
+            return
+
+        full_path = os.path.join(previous_path, item_name)
+        try:
+            if os.path.isfile(full_path):
+                os.remove(full_path)
+                messagebox.showinfo("Success", f"File '{item_name}' deleted successfully!")
+            elif os.path.isdir(full_path):
+                os.rmdir(full_path)
+                messagebox.showinfo("Success", f"Directory '{item_name}' deleted successfully!")
+            else:
+                messagebox.showerror("Error", "Item not found.")
+            update_combobox_items(previous_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete item: {e}")
+
+    main_create_button(text="Delete", command=delete_item, row=7, column=1)
+    main_create_button(text="Back", command=files_menu, row=8, column=1)
+
+def files_move(previous_path):
+    main_clear()
+
+    main_title("File Management")
+
+    tk.Label(frame_main, text="Current Path (from):", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
+
+    combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
+    combobox_items.grid(row=3, column=1, padx=10, pady=10)
+    combobox_items.set("Select file or directory to move")
+
+    def update_combobox_items(path):
+        try:
+            combobox_items["values"] = os.listdir(path)
+        except Exception as e:
+            combobox_items["values"] = []
+            messagebox.showerror("Error", f"Failed to list items: {e}")
+
+    update_combobox_items(previous_path)
+
+    tk.Label(frame_main, text="Target Path:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=4, column=1, padx=10, pady=10)
+
+    entry_target = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_target.grid(row=5, column=1, padx=10, pady=10)
+
+    def move_item():
+        item_name = combobox_items.get()
+        target_path = entry_target.get()
+
+        if not item_name or not target_path:
+            messagebox.showerror("Error", "Please select an item and enter a target path.")
+            return
+
+        full_path = os.path.join(previous_path, item_name)
+        target_full_path = os.path.join(target_path, item_name)
+
+        try:
+            if not os.path.exists(target_path):
+                raise FileNotFoundError("Target path does not exist.")
+            os.rename(full_path, target_full_path)
+            messagebox.showinfo("Success", f"Item moved to {target_path}")
+            update_combobox_items(previous_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to move item: {e}")
+
+    main_create_button(text="Move", command=move_item, row=6, column=1)
+    main_create_button(text="Back", command=files_menu, row=7, column=1)
 
 def test(btn):
     print(f"{btn}")
@@ -609,8 +861,9 @@ frame_main.grid_columnconfigure(2, weight=1)
 nav_create_button(text="Users", command=users_menu, row=0, column=0)
 nav_create_button(text="System", command=system, row=0, column=1)
 nav_create_button(text="Services", command=services, row=0, column=2)
-nav_create_button(text="Files", command=lambda: test("Files"), row=0, column=3)
+nav_create_button(text="Files", command=files_menu, row=0, column=3)
 nav_create_button(text="Automations", command=lambda: test("Automations"), row=0, column=4)
+main_title("Welcome to Linux Controller!")
 
 """ MAIN """
 root.mainloop()
