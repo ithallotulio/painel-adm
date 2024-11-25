@@ -4,7 +4,6 @@ from tkinter import messagebox, ttk, simpledialog
 import subprocess
 import config
 import random
-import shutil
 import os
 
 current_path = os.getcwd()
