@@ -717,13 +717,13 @@ def files_create(previous_path):
     # Radiobuttons
     creation_type = tk.StringVar(value="File")
     frame_radiobuttons = tk.Frame(frame_main, bg=config.color_label_bg)
-    frame_radiobuttons.grid(row=5, column=1, padx=10, pady=10)
+    frame_radiobuttons.grid(row=6, column=1, padx=10, pady=10)
 
-    tk.Radiobutton(frame_radiobuttons, text="File", variable=creation_type, value="File", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg, width=17, height=2).pack(side=tk.LEFT, padx=5)
-    tk.Radiobutton(frame_radiobuttons, text="Directory", variable=creation_type, value="Directory", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg, width=17, height=2).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(frame_radiobuttons, text="File", variable=creation_type, value="File", font=("Segoe UI", 12), bg='#868686', width=17, height=2).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(frame_radiobuttons, text="Directory", variable=creation_type, value="Directory", font=("Segoe UI", 12), bg='#868686', width=17, height=2).pack(side=tk.LEFT, padx=5)
 
     entry_name = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
-    entry_name.grid(row=6, column=1, padx=10, pady=10)
+    entry_name.grid(row=5, column=1, padx=10, pady=10)
 
     def create_item():
         item_name = entry_name.get()
@@ -754,12 +754,14 @@ def files_delete(previous_path):
     tk.Label(frame_main, text="Select file or directory to delete", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg).grid(row=1, column=1, padx=10, pady=10)
 
     combobox_items = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, state="readonly")
-    combobox_items.grid(row=3, column=1, padx=10, pady=10)
-    combobox_items.set(previous_path)
+    combobox_items.grid(row=2, column=1, padx=10, pady=10)
 
     def update_combobox_items(path):
         try:
-            combobox_items["values"] = os.listdir(path)
+            result = subprocess.run(["ls", path], capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(result.stderr)
+            combobox_items["values"] = result.stdout.splitlines()
         except Exception as e:
             combobox_items["values"] = []
             messagebox.showerror("Error", f"Failed to list items: {e}")
@@ -768,26 +770,16 @@ def files_delete(previous_path):
 
     def delete_item():
         item_name = combobox_items.get()
-        if not item_name:
-            messagebox.showerror("Error", "Please select a valid item.")
-            return
-
-        full_path = os.path.join(previous_path, item_name)
+        full_path = f"{previous_path}/{item_name}"
         try:
-            if os.path.isfile(full_path):
-                os.remove(full_path)
-                messagebox.showinfo("Success", f"File '{item_name}' deleted successfully!")
-            elif os.path.isdir(full_path):
-                os.rmdir(full_path)
-                messagebox.showinfo("Success", f"Directory '{item_name}' deleted successfully!")
-            else:
-                messagebox.showerror("Error", "Item not found.")
+            subprocess.run(["rm", "-r", full_path], check=True)
+            messagebox.showinfo("Success", f"Item '{item_name}' deleted successfully!")
             update_combobox_items(previous_path)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to delete item: {e}")
 
-    main_create_button(text="Delete", command=delete_item, row=7, column=1)
-    main_create_button(text="Back", command=files_menu, row=8, column=1)
+    main_create_button(text="Delete", command=delete_item, row=3, column=1)
+    main_create_button(text="Back", command=files_menu, row=4, column=1)
 
 def files_move(previous_path):
     main_clear()
@@ -837,8 +829,303 @@ def files_move(previous_path):
     main_create_button(text="Move", command=move_item, row=6, column=1)
     main_create_button(text="Back", command=files_menu, row=7, column=1)
 
-def test(btn):
-    print(f"{btn}")
+def automations_menu():
+    """Interface para gerenciamento de automações."""
+    main_clear()
+    main_title("Automations")
+
+    main_create_button(text="Add Task", command=automations_add_task, row=1, column=1)
+    main_create_button(text="Edit Task", command=automations_edit_task, row=2, column=1)
+    main_create_button(text="Delete Task", command=automations_delete_task, row=3, column=1)
+    main_create_button(text="Close", command=main_clear, row=4, column=1)
+
+def automations_add_task():
+    """Adiciona uma nova tarefa ao crontab com horário e comando."""
+    
+    def save_task():
+        cron_time = entry_time.get().strip()
+        cron_command = entry_command.get().strip()
+
+        if not cron_time or not cron_command:
+            messagebox.showerror("Error", "Time and Command fields cannot be empty!")
+            return
+
+        # Validação do formato de horário (5 campos ou asterisco)
+        time_fields = cron_time.split()
+        if len(time_fields) != 5:
+            messagebox.showerror("Error", "Invalid time format! Must be 'min hour day month weekday'.")
+            return
+
+        # Permitir números ou asterisco como valores válidos nos campos de tempo
+        for field in time_fields:
+            if not (field.isdigit() or field == '*'):
+                messagebox.showerror("Error", "Invalid time format! Use numbers or '*' for any field.")
+                return
+
+        try:
+            # Escape de aspas no comando (isso assegura que as aspas sejam preservadas corretamente)
+            cron_command_escaped = cron_command.replace('"', '\\"')  # Escapa aspas duplas
+            
+            # Escreve a tarefa no crontab
+            result = subprocess.run(
+                f'(crontab -l; echo "{cron_time} {cron_command_escaped}") | crontab -',
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", "Task added successfully!")
+                entry_time.delete(0, tk.END)
+                entry_command.delete(0, tk.END)
+            else:
+                messagebox.showerror("Error", f"Failed to add task:\n{result.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+
+    main_clear()
+    main_title("Add Task")
+
+    label_command = tk.Label(frame_main, text="Enter command to run:", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg)
+    label_command.grid(row=1, column=1, padx=10, pady=10)
+
+    entry_command = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_command.grid(row=2, column=1, padx=10, pady=10)
+
+    label_time = tk.Label(frame_main, text="Enter schedule (e.g., '* * * * *'):", font=("Segoe UI", 12), fg=config.color_label_text, bg=config.color_label_bg)
+    label_time.grid(row=3, column=1, padx=10, pady=10)
+
+    entry_time = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_time.grid(row=4, column=1, padx=10, pady=10)
+
+    main_create_button(text="Save Task", command=save_task, row=5, column=1)
+    main_create_button(text="Back", command=automations_menu, row=6, column=1)
+
+def automations_edit_task():
+    """Edita o horário de uma tarefa existente no crontab."""
+
+    def load_tasks():
+        """Carrega as tarefas existentes do crontab."""
+        try:
+            result = subprocess.run(
+                ["crontab", "-l"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0 or not result.stdout.strip():
+                messagebox.showinfo("Info", "No tasks found in crontab.")
+                return []
+
+            # Retorna as tarefas como uma lista de strings
+            return result.stdout.strip().splitlines()
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while loading tasks: {e}")
+            return []
+
+    def confirm_edit():
+        """Confirma e edita o horário da tarefa selecionada."""
+        selected_task = combobox_tasks.get()
+        new_time = entry_new_time.get().strip()
+
+        if not selected_task:
+            messagebox.showerror("Error", "You must select a task to edit!")
+            return
+
+        if not new_time:
+            messagebox.showerror("Error", "New time cannot be empty!")
+            return
+
+        # Validação do horário (5 campos ou asterisco)
+        time_fields = new_time.split()
+        if len(time_fields) != 5:
+            messagebox.showerror("Error", "Invalid time format! Must have 5 fields (min hour day month weekday).")
+            return
+
+        # Permitir números ou asterisco como valores válidos nos campos de tempo
+        for field in time_fields:
+            if not (field.isdigit() or field == '*'):
+                messagebox.showerror("Error", "Invalid time format! Use numbers or '*' for any field.")
+                return
+
+        try:
+            # Carrega todas as tarefas e edita a linha selecionada
+            tasks = load_tasks()
+            if not tasks:
+                return
+
+            updated_tasks = []
+            for task in tasks:
+                if task.strip() == selected_task.strip():
+                    # Divide a tarefa em horário e comando
+                    parts = task.split(' ', 5)  # Divide no máximo em 6 partes
+                    if len(parts) >= 6:
+                        # Substitui o horário da tarefa com o novo horário
+                        updated_tasks.append(f"{new_time} {parts[5]}")
+                    else:
+                        # Se a tarefa não tiver o formato esperado, apenas copia a linha
+                        updated_tasks.append(task)
+                else:
+                    updated_tasks.append(task)
+
+            # Atualiza o crontab com as tarefas editadas
+            result = subprocess.run(
+                ["crontab", "-"],
+                input="\n".join(updated_tasks) + "\n",  # Reescreve o crontab com as tarefas editadas
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                messagebox.showinfo("Success", f"Task '{selected_task}' updated successfully!")
+                update_task_list()  # Atualiza a lista de tarefas após a edição
+                entry_new_time.delete(0, tk.END)
+            else:
+                messagebox.showerror("Error", f"Failed to update crontab:\n{result.stderr}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def update_task_list():
+        """Atualiza a lista de tarefas no combobox."""
+        tasks = load_tasks()
+        combobox_tasks['values'] = tasks
+        if tasks:
+            combobox_tasks.set('')  # Limpa a seleção atual
+
+    main_clear()
+    main_title("Edit Task")
+
+    # Carrega as tarefas existentes
+    tasks = load_tasks()
+    if not tasks:
+        automations_menu()
+        return
+
+    label_task = tk.Label(frame_main,
+                          text="Select a task to edit:",
+                          font=("Segoe UI", 12),
+                          fg=config.color_label_text,  # Cor do texto
+                          bg=config.color_label_bg)    # Cor do fundo
+    label_task.grid(row=1, column=1, padx=10, pady=10)
+
+    combobox_tasks = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, values=tasks)
+    combobox_tasks.grid(row=2, column=1, padx=10, pady=10)
+    combobox_tasks.set('')
+
+    label_new_time = tk.Label(frame_main,
+                              text="Enter new time (e.g., '0 5 * * *'):",
+                              font=("Segoe UI", 12),
+                              fg=config.color_label_text,  # Cor do texto
+                              bg=config.color_label_bg)    # Cor do fundo
+    label_new_time.grid(row=3, column=1, padx=10, pady=10)
+
+    entry_new_time = tk.Entry(frame_main, font=("Segoe UI", 12), width=40)
+    entry_new_time.grid(row=4, column=1, padx=10, pady=10)
+
+    main_create_button(text="Save Changes", command=confirm_edit, row=5, column=1)
+    main_create_button(text="Back", command=automations_menu, row=6, column=1)
+
+def automations_delete_task():
+    """Remove uma tarefa do crontab com seleção de tarefas existentes."""
+
+    def load_tasks():
+        """Carrega as tarefas existentes do crontab."""
+        try:
+            result = subprocess.run(
+                ["crontab", "-l"],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0 or not result.stdout.strip():
+                messagebox.showinfo("Info", "No tasks found in crontab.")
+                return []
+
+            # Retorna as tarefas como uma lista de strings
+            return result.stdout.strip().splitlines()
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while loading tasks: {e}")
+            return []
+
+    def confirm_delete():
+        """Confirma e remove a tarefa selecionada."""
+        selected_task = combobox_tasks.get()
+        if not selected_task:
+            messagebox.showerror("Error", "You must select a task to delete!")
+            return
+
+        try:
+            # Carrega todas as tarefas e exclui a selecionada
+            tasks = load_tasks()
+            if not tasks:
+                return
+
+            # Remove a tarefa selecionada
+            tasks = [task for task in tasks if task.strip() != selected_task.strip()]
+
+            # Atualiza o crontab com as tarefas restantes
+            if tasks:
+                # Atualiza o crontab com as tarefas restantes
+                result = subprocess.run(
+                    ["crontab", "-"],
+                    input="\n".join(tasks) + "\n",  # Reescreve o crontab com as tarefas restantes
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode == 0:
+                    messagebox.showinfo("Success", f"Task '{selected_task}' removed successfully!")
+                    update_task_list()  # Atualiza a lista de tarefas após a exclusão
+                else:
+                    messagebox.showerror("Error", f"Failed to update crontab:\n{result.stderr}")
+            else:
+                # Se não houver tarefas restantes, limpa o crontab
+                result_clear = subprocess.run(
+                    ["crontab", "-r"],  # Remove todas as tarefas
+                    capture_output=True,
+                    text=True
+                )
+
+                if result_clear.returncode == 0:
+                    messagebox.showinfo("Success", f"Task '{selected_task}' removed successfully!")
+                    update_task_list()
+                else:
+                    messagebox.showerror("Error", f"Failed to clear crontab:\n{result_clear.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+
+    def update_task_list():
+        """Atualiza a lista de tarefas no combobox."""
+        tasks = load_tasks()
+        if tasks:
+            combobox_tasks['values'] = tasks
+            combobox_tasks.set('')  # Limpa a seleção atual
+        else:
+            automations_menu()
+
+    main_clear()
+    main_title("Delete Task")
+
+    # Carrega as tarefas existentes
+    tasks = load_tasks()
+    if not tasks:
+        automations_menu()
+        return
+
+    label_task = tk.Label(frame_main,
+                          text="Select a task to delete:",
+                          font=("Segoe UI", 12),
+                          fg=config.color_label_text,  # Cor do texto
+                          bg=config.color_label_bg)    # Cor do fundo
+    label_task.grid(row=1, column=1, padx=10, pady=10)
+
+    combobox_tasks = ttk.Combobox(frame_main, font=("Segoe UI", 12), width=39, values=tasks)
+    combobox_tasks.grid(row=2, column=1, padx=10, pady=10)
+    combobox_tasks.set("Select a task")
+
+    main_create_button(text="Delete Task", command=confirm_delete, row=3, column=1)
+    main_create_button(text="Back", command=automations_menu, row=4, column=1)
 
 """ ROOT """
 root = tk.Tk()
@@ -862,7 +1149,7 @@ nav_create_button(text="Users", command=users_menu, row=0, column=0)
 nav_create_button(text="System", command=system, row=0, column=1)
 nav_create_button(text="Services", command=services, row=0, column=2)
 nav_create_button(text="Files", command=files_menu, row=0, column=3)
-nav_create_button(text="Automations", command=lambda: test("Automations"), row=0, column=4)
+nav_create_button(text="Automations", command=automations_menu, row=0, column=4)
 main_title("Welcome to Linux Controller!")
 
 """ MAIN """
