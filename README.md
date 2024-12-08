@@ -20,7 +20,7 @@ Painel administrativo desenvolvido em Python, com interface gráfica criada usan
 
 ## Instalação e Execução
 
-1. Clone o repositório:
+1. Execute o comando abaixo:
    ```bash
    git clone https://github.com/ithallotulio/painel-adm.git
    cd painel-adm
